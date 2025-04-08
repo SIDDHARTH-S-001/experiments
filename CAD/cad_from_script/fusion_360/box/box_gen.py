@@ -146,35 +146,38 @@ class CubeCreatorCommandExecuteHandler(adsk.core.CommandEventHandler):
             
             # Apply feature if chosen (and if edgeOption is true).
             if featureType != 'None' and edgeOption:
-                if featureType == 'Fillet':
-                    filletFeats = rootComp.features.filletFeatures
-                    filletInput = filletFeats.createInput()
-                    
-                    edgesCollection = adsk.core.ObjectCollection.create()
-                    for edge in cubeBody.edges:
-                        edgesCollection.add(edge)
-                    filletInput.addConstantRadiusEdgeSet(
-                        edgesCollection,
-                        adsk.core.ValueInput.createByReal(feature_converted),
-                        True
-                    )
-                    
-                    filletFeats.add(filletInput)
-                elif featureType == 'Chamfer':
-                    chamferFeats = rootComp.features.chamferFeatures
-                    chamferInput = chamferFeats.createInput2()
-                    
-                    edgesCollection = adsk.core.ObjectCollection.create()
-                    for edge in cubeBody.edges:
-                        edgesCollection.add(edge)
-                    
-                    # For older API versions, assign edges and then set equal distance.
-                    chamferInput.edges = edgesCollection
-                    chamferInput.setToEqualDistance(adsk.core.ValueInput.createByReal(feature_converted))
-                    
-                    chamferFeats.add(chamferInput)
+                try:
+                    if featureType == 'Fillet':
+                        filletFeats = rootComp.features.filletFeatures
+                        filletInput = filletFeats.createInput()
+                        
+                        edgesCollection = adsk.core.ObjectCollection.create()
+                        for edge in cubeBody.edges:
+                            edgesCollection.add(edge)
+                        filletInput.addConstantRadiusEdgeSet(
+                            edgesCollection,
+                            adsk.core.ValueInput.createByReal(feature_converted),
+                            True
+                        )
+                        filletFeats.add(filletInput)
+                    elif featureType == 'Chamfer':
+                        chamferFeats = rootComp.features.chamferFeatures
+                        chamferInput = chamferFeats.createInput2()
+                        
+                        edgesCollection = adsk.core.ObjectCollection.create()
+                        for edge in cubeBody.edges:
+                            edgesCollection.add(edge)
+                        
+                        # For older API versions, assign edges and then set equal distance.
+                        chamferInput.edges = edgesCollection
+                        chamferInput.setToEqualDistance(adsk.core.ValueInput.createByReal(feature_converted))
+                        chamferFeats.add(chamferInput)
+                except Exception as featureErr:
+                    ui = app.userInterface
+                    ui.messageBox("The selected feature cannot be implemented. Check the dimensions and feature value")
+                    return  # Do not terminate the plugin if feature fails.
             
-            # Stop the plugin once the script is run once.
+            # If everything succeeds, terminate the plugin.
             adsk.terminate()
         except Exception as e:
             app = adsk.core.Application.get()
