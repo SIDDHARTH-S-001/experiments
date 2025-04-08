@@ -1,40 +1,46 @@
 import adsk.core, adsk.fusion, adsk.cam, traceback
 
-# Debugger: only used if you're attaching from VS Code
+# --- Import and run FusionDebugSetup ---
+try:
+    from fusionDebugSetup import FusionDebugSetup
+
+    pre_run_script_path = r'C:\Users\SIDDHARTH\AppData\Roaming\Autodesk\Autodesk Fusion 360\API\Python\vscode\pre-run.py'  # Update if different
+    debug_setup = FusionDebugSetup(pre_run_script_path)
+    debug_setup.run()
+except Exception as debug_setup_error:
+    print(f"[Warning] Failed to execute FusionDebugSetup: {debug_setup_error}")
+
+# --- Attach Debugger ---
 try:
     import debugpy
     debugpy.listen(('localhost', 9000))
-    debugpy.wait_for_client()  # Optional: pause here until VS Code attaches
+    debugpy.wait_for_client()
 except:
-    pass  # ignore if debugpy isn't available
+    pass
 
+# --- Fusion 360 Model Creation ---
 def run(context):
     ui = None
     try:
         app = adsk.core.Application.get()
         ui = app.userInterface
         design = app.activeProduct
-
-        # Get root component of active design
         rootComp = design.rootComponent
 
-        # Create a new sketch on the XY plane
         sketches = rootComp.sketches
         xyPlane = rootComp.xYConstructionPlane
         sketch = sketches.add(xyPlane)
 
-        # Draw a 10x10 rectangle
+        # Creates a rectangle of 10x10
         sketch.sketchCurves.sketchLines.addTwoPointRectangle(
             adsk.core.Point3D.create(0, 0, 0),
             adsk.core.Point3D.create(10, 10, 0)
         )
 
-        # Create a profile and extrude it to 5mm
         prof = sketch.profiles.item(0)
         extrudes = rootComp.features.extrudeFeatures
         extInput = extrudes.createInput(prof, adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
-
-        distance = adsk.core.ValueInput.createByReal(5)
+        distance = adsk.core.ValueInput.createByReal(10) # extrude by 5 mm
         extInput.setDistanceExtent(False, distance)
         extrudes.add(extInput)
 
