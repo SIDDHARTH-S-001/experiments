@@ -168,7 +168,6 @@ class CubeCreatorCommandExecuteHandler(adsk.core.CommandEventHandler):
                         verticesCollection = adsk.core.ObjectCollection.create()
                         for vertex in cubeBody.vertices:
                             verticesCollection.add(vertex)
-                        # Note: addConstantRadiusVertexSet may not be in all API versions.
                         try:
                             filletInput.addConstantRadiusVertexSet(
                                 verticesCollection,
@@ -182,21 +181,27 @@ class CubeCreatorCommandExecuteHandler(adsk.core.CommandEventHandler):
                 
                 elif featureType == 'Chamfer':
                     chamferFeats = rootComp.features.chamferFeatures
+                    chamferInput = chamferFeats.createInput2()
+                    
+                    # Add all edges to the chamfer input.
                     edgesCollection = adsk.core.ObjectCollection.create()
                     for edge in cubeBody.edges:
                         edgesCollection.add(edge)
                     
-                    chamferInput = chamferFeats.createInput2()
-                    chamferInput.setToEqualDistance(
-                        edgesCollection,
-                        adsk.core.ValueInput.createByReal(feature_converted)
-                    )
+                    # Must specify edges and distance separately in older versions.
+                    chamferInput.edges = edgesCollection
+                    chamferInput.setToEqualDistance(adsk.core.ValueInput.createByReal(feature_converted))
+                    
                     chamferFeats.add(chamferInput)
                     
-                    # For Chamfer, vertex option is not supported.
+                    # Chamfer on vertices is not supported.
                     if vertexOption:
                         ui = app.userInterface
                         ui.messageBox('Chamfer on vertices is not supported. Only edges are processed.')
+
+            # Stop the plugin once the script is run once.
+            adsk.terminate()
+
         except Exception as e:
             app = adsk.core.Application.get()
             ui  = app.userInterface
@@ -227,8 +232,9 @@ def run(context):
         # Execute the command.
         cmdDef.execute()
         
-        # Prevent Fusion 360 from terminating the script.
+        # We set adsk.autoTerminate(False) so the script doesn't end before the command finishes.
         adsk.autoTerminate(False)
+
     except Exception as e:
         if ui:
             ui.messageBox('Failed in run:\n{}'.format(traceback.format_exc()))
