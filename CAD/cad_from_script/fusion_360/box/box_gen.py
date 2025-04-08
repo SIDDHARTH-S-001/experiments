@@ -3,7 +3,6 @@ import adsk.core, adsk.fusion, adsk.cam, traceback
 # --- Import and run FusionDebugSetup ---
 try:
     from fusionDebugSetup import FusionDebugSetup
-
     pre_run_script_path = r'C:\Users\SIDDHARTH\AppData\Roaming\Autodesk\Autodesk Fusion 360\API\Python\vscode\pre-run.py'
     debug_setup = FusionDebugSetup(pre_run_script_path)
     debug_setup.run()
@@ -24,7 +23,6 @@ handlers = []
 # ===============================================
 # COMMAND DIALOG FOR CUBE CREATION WITH OPTIONS
 # ===============================================
-
 class CubeCreatorCommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
     def notify(self, args):
         try:
@@ -32,8 +30,12 @@ class CubeCreatorCommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
             inputs = cmd.commandInputs
             
             # --- Dropdown for units ---
-            dropdownUnits = inputs.addDropDownCommandInput('unitsInput', 'Units', adsk.core.DropDownStyles.TextListDropDownStyle)
-            dropdownUnits.listItems.add('mm', True)    # default selected
+            dropdownUnits = inputs.addDropDownCommandInput(
+                'unitsInput',
+                'Units',
+                adsk.core.DropDownStyles.TextListDropDownStyle
+            )
+            dropdownUnits.listItems.add('mm', True)  # default selected
             dropdownUnits.listItems.add('cm', False)
             dropdownUnits.listItems.add('inch', False)
             dropdownUnits.listItems.add('m', False)
@@ -44,17 +46,28 @@ class CubeCreatorCommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
             inputs.addStringValueInput('heightInput', 'Height', '10')
             
             # --- Dropdown for feature type (None, Fillet, Chamfer) ---
-            dropdownFeature = inputs.addDropDownCommandInput('featureType', 'Feature Type', adsk.core.DropDownStyles.TextListDropDownStyle)
-            dropdownFeature.listItems.add('None', True)     # default is None
+            dropdownFeature = inputs.addDropDownCommandInput(
+                'featureType',
+                'Feature Type',
+                adsk.core.DropDownStyles.TextListDropDownStyle
+            )
+            dropdownFeature.listItems.add('None', True)   # default is None
             dropdownFeature.listItems.add('Fillet', False)
             dropdownFeature.listItems.add('Chamfer', False)
             
             # --- Checkboxes for selection ---
             inputs.addBoolValueInput('edgeOption', 'Apply to Edges', True, '', True)
-            inputs.addBoolValueInput('vertexOption', 'Apply to Vertices', False, '', False)
+            inputs.addBoolValueInput('vertexOption', 'Apply to Vertices', True, '', False)
             
             # --- Text box for the feature value (radius/distance) ---
-            inputs.addStringValueInput('featureValue', 'Feature Value', '1')
+            # Initially hidden if 'None' is selected by default.
+            featureValueInput = inputs.addStringValueInput('featureValue', 'Feature Value', '1')
+            featureValueInput.isVisible = False
+            
+            # Add input changed handler to toggle featureValue visibility.
+            onInputChanged = CubeCreatorCommandInputChangedHandler()
+            cmd.inputChanged.add(onInputChanged)
+            handlers.append(onInputChanged)
             
             # Add the execute handler.
             onExecute = CubeCreatorCommandExecuteHandler()
@@ -65,10 +78,27 @@ class CubeCreatorCommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
             ui  = app.userInterface
             ui.messageBox('Failed in command created handler:\n{}'.format(traceback.format_exc()))
 
+class CubeCreatorCommandInputChangedHandler(adsk.core.InputChangedEventHandler):
+    def notify(self, args):
+        try:
+            eventArgs = adsk.core.InputChangedEventArgs.cast(args)
+            changedInput = eventArgs.input
+            if changedInput.id == 'featureType':
+                cmdInputs = eventArgs.firingEvent.sender.commandInputs
+                featureValueInput = cmdInputs.itemById('featureValue')
+                # Toggle visibility: show only if Fillet or Chamfer is selected.
+                if changedInput.selectedItem.name == 'None':
+                    featureValueInput.isVisible = False
+                else:
+                    featureValueInput.isVisible = True
+        except Exception as e:
+            app = adsk.core.Application.get()
+            ui = app.userInterface
+            ui.messageBox('Failed in input changed handler:\n{}'.format(traceback.format_exc()))
+
 class CubeCreatorCommandExecuteHandler(adsk.core.CommandEventHandler):
     def notify(self, args):
         try:
-            # Retrieve inputs.
             inputs = args.command.commandInputs
             unitItem = inputs.itemById('unitsInput').selectedItem.name
             length_val = float(inputs.itemById('lengthInput').value)
@@ -77,10 +107,14 @@ class CubeCreatorCommandExecuteHandler(adsk.core.CommandEventHandler):
             featureType = inputs.itemById('featureType').selectedItem.name
             edgeOption = inputs.itemById('edgeOption').value
             vertexOption = inputs.itemById('vertexOption').value
-            feature_val = float(inputs.itemById('featureValue').value)
             
-            # Conversion factors to convert user-entered values to Fusion's internal units.
-            # (Assuming Fusion's design uses centimeters as the base unit.)
+            # Only retrieve feature value if needed.
+            if featureType == 'None':
+                feature_val = 0
+            else:
+                feature_val = float(inputs.itemById('featureValue').value)
+            
+            # Conversion factors to convert user values to Fusion's internal units (assumed centimeters).
             conversion_factors = {'mm': 0.1, 'cm': 1.0, 'inch': 2.54, 'm': 100.0}
             factor = conversion_factors.get(unitItem, 1.0)
             length_converted = length_val * factor
@@ -88,12 +122,12 @@ class CubeCreatorCommandExecuteHandler(adsk.core.CommandEventHandler):
             height_converted = height_val * factor
             feature_converted = feature_val * factor
             
-            # Get Fusion application and design info.
+            # Get Fusion application and design.
             app = adsk.core.Application.get()
             design = app.activeProduct
             rootComp = design.rootComponent
 
-            # Create a new sketch on the XY construction plane.
+            # Create a new sketch on the XY plane.
             sketches = rootComp.sketches
             xyPlane = rootComp.xYConstructionPlane
             sketch = sketches.add(xyPlane)
@@ -112,27 +146,57 @@ class CubeCreatorCommandExecuteHandler(adsk.core.CommandEventHandler):
             extFeature = extrudes.add(extInput)
             cubeBody = extFeature.bodies.item(0)
             
-            # Apply fillet or chamfer, if chosen and if at least one checkbox is true.
+            # Apply fillet or chamfer if chosen, only if at least one checkbox is true.
             if featureType != 'None' and (edgeOption or vertexOption):
                 if featureType == 'Fillet':
                     filletFeats = rootComp.features.filletFeatures
                     filletInput = filletFeats.createInput()
-                    # For simplicity, if either option is checked, apply fillet to all edges.
-                    edgesCollection = adsk.core.ObjectCollection.create()
-                    for edge in cubeBody.edges:
-                        edgesCollection.add(edge)
-                    filletInput.addConstantRadiusEdgeSet(edgesCollection, adsk.core.ValueInput.createByReal(feature_converted), True)
+                    
+                    # Apply on edges if checked.
+                    if edgeOption:
+                        edgesCollection = adsk.core.ObjectCollection.create()
+                        for edge in cubeBody.edges:
+                            edgesCollection.add(edge)
+                        filletInput.addConstantRadiusEdgeSet(
+                            edgesCollection,
+                            adsk.core.ValueInput.createByReal(feature_converted),
+                            True
+                        )
+                    
+                    # Apply on vertices if checked.
+                    if vertexOption:
+                        verticesCollection = adsk.core.ObjectCollection.create()
+                        for vertex in cubeBody.vertices:
+                            verticesCollection.add(vertex)
+                        # Note: addConstantRadiusVertexSet may not be in all API versions.
+                        try:
+                            filletInput.addConstantRadiusVertexSet(
+                                verticesCollection,
+                                adsk.core.ValueInput.createByReal(feature_converted)
+                            )
+                        except Exception as e:
+                            ui = app.userInterface
+                            ui.messageBox('Vertex filleting not supported:\n{}'.format(str(e)))
+                    
                     filletFeats.add(filletInput)
+                
                 elif featureType == 'Chamfer':
                     chamferFeats = rootComp.features.chamferFeatures
-                    # Create an ObjectCollection of all edges.
                     edgesCollection = adsk.core.ObjectCollection.create()
                     for edge in cubeBody.edges:
                         edgesCollection.add(edge)
-                    # Use a simple equal-distance chamfer for demonstration.
+                    
                     chamferInput = chamferFeats.createInput2()
-                    chamferInput.setToEqualDistance(edgesCollection, adsk.core.ValueInput.createByReal(feature_converted))
+                    chamferInput.setToEqualDistance(
+                        edgesCollection,
+                        adsk.core.ValueInput.createByReal(feature_converted)
+                    )
                     chamferFeats.add(chamferInput)
+                    
+                    # For Chamfer, vertex option is not supported.
+                    if vertexOption:
+                        ui = app.userInterface
+                        ui.messageBox('Chamfer on vertices is not supported. Only edges are processed.')
         except Exception as e:
             app = adsk.core.Application.get()
             ui  = app.userInterface
@@ -147,12 +211,15 @@ def run(context):
         app = adsk.core.Application.get()
         ui  = app.userInterface
         
-        # Create a command definition. (If one with the same ID already exists, use it.)
+        # Create (or get) a command definition.
         cmdDef = ui.commandDefinitions.itemById('CubeCreatorCommand')
         if not cmdDef:
-            cmdDef = ui.commandDefinitions.addButtonDefinition('CubeCreatorCommand', 'Cube Creator', 'Creates a cube with fillet/chamfer options')
+            cmdDef = ui.commandDefinitions.addButtonDefinition(
+                'CubeCreatorCommand',
+                'Cube Creator',
+                'Creates a cube with fillet/chamfer options'
+            )
         
-        # Add the command created event handler.
         onCommandCreated = CubeCreatorCommandCreatedHandler()
         cmdDef.commandCreated.add(onCommandCreated)
         handlers.append(onCommandCreated)
