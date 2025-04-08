@@ -65,11 +65,24 @@ STEP 4: CREATE YOUR ACTUAL SCRIPT
    D:\MyFusionScripts\box_creator
 
 2. Inside that folder, create a file named:
+   fusion_debug_runner.py
+
+3. Paste the FusionDebugSetup class in that file.
+
+4. In the same folder, create a file named:
    main.py
 
-3. Paste the following content:
+5. Paste the following content:
 
    import adsk.core, adsk.fusion, adsk.cam, traceback
+
+   # Run pre-run.py dynamically
+   try:
+       from fusion_debug_runner import FusionDebugSetup
+       debug_setup = FusionDebugSetup(r'C:\FusionDebug\pre_run_debug\pre-run.py')
+       debug_setup.run()
+   except Exception as debug_setup_error:
+       print(f"[Warning] Failed to execute FusionDebugSetup: {debug_setup_error}")
 
    try:
        import debugpy
@@ -106,7 +119,7 @@ STEP 4: CREATE YOUR ACTUAL SCRIPT
            if ui:
                ui.messageBox(f'Failed: {str(e)}\n{traceback.format_exc()}')
 
-4. Save the file.
+6. Save both files.
 
 ---------------------------------------
 STEP 5: SET UP launch.json FOR VSCODE
