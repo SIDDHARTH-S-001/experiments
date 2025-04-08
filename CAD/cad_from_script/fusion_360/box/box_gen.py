@@ -55,12 +55,11 @@ class CubeCreatorCommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
             dropdownFeature.listItems.add('Fillet', False)
             dropdownFeature.listItems.add('Chamfer', False)
             
-            # --- Checkboxes for selection ---
+            # --- Checkbox for selection: Apply to Edges ---
             inputs.addBoolValueInput('edgeOption', 'Apply to Edges', True, '', True)
-            inputs.addBoolValueInput('vertexOption', 'Apply to Vertices', True, '', False)
             
             # --- Text box for the feature value (radius/distance) ---
-            # Initially hidden if 'None' is selected by default.
+            # Initially hidden if 'None' is selected.
             featureValueInput = inputs.addStringValueInput('featureValue', 'Feature Value', '1')
             featureValueInput.isVisible = False
             
@@ -106,7 +105,6 @@ class CubeCreatorCommandExecuteHandler(adsk.core.CommandEventHandler):
             height_val = float(inputs.itemById('heightInput').value)
             featureType = inputs.itemById('featureType').selectedItem.name
             edgeOption = inputs.itemById('edgeOption').value
-            vertexOption = inputs.itemById('vertexOption').value
             
             # Only retrieve feature value if needed.
             if featureType == 'None':
@@ -146,62 +144,38 @@ class CubeCreatorCommandExecuteHandler(adsk.core.CommandEventHandler):
             extFeature = extrudes.add(extInput)
             cubeBody = extFeature.bodies.item(0)
             
-            # Apply fillet or chamfer if chosen, only if at least one checkbox is true.
-            if featureType != 'None' and (edgeOption or vertexOption):
+            # Apply feature if chosen (and if edgeOption is true).
+            if featureType != 'None' and edgeOption:
                 if featureType == 'Fillet':
                     filletFeats = rootComp.features.filletFeatures
                     filletInput = filletFeats.createInput()
                     
-                    # Apply on edges if checked.
-                    if edgeOption:
-                        edgesCollection = adsk.core.ObjectCollection.create()
-                        for edge in cubeBody.edges:
-                            edgesCollection.add(edge)
-                        filletInput.addConstantRadiusEdgeSet(
-                            edgesCollection,
-                            adsk.core.ValueInput.createByReal(feature_converted),
-                            True
-                        )
-                    
-                    # Apply on vertices if checked.
-                    if vertexOption:
-                        verticesCollection = adsk.core.ObjectCollection.create()
-                        for vertex in cubeBody.vertices:
-                            verticesCollection.add(vertex)
-                        try:
-                            filletInput.addConstantRadiusVertexSet(
-                                verticesCollection,
-                                adsk.core.ValueInput.createByReal(feature_converted)
-                            )
-                        except Exception as e:
-                            ui = app.userInterface
-                            ui.messageBox('Vertex filleting not supported:\n{}'.format(str(e)))
+                    edgesCollection = adsk.core.ObjectCollection.create()
+                    for edge in cubeBody.edges:
+                        edgesCollection.add(edge)
+                    filletInput.addConstantRadiusEdgeSet(
+                        edgesCollection,
+                        adsk.core.ValueInput.createByReal(feature_converted),
+                        True
+                    )
                     
                     filletFeats.add(filletInput)
-                
                 elif featureType == 'Chamfer':
                     chamferFeats = rootComp.features.chamferFeatures
                     chamferInput = chamferFeats.createInput2()
                     
-                    # Add all edges to the chamfer input.
                     edgesCollection = adsk.core.ObjectCollection.create()
                     for edge in cubeBody.edges:
                         edgesCollection.add(edge)
                     
-                    # Must specify edges and distance separately in older versions.
+                    # For older API versions, assign edges and then set equal distance.
                     chamferInput.edges = edgesCollection
                     chamferInput.setToEqualDistance(adsk.core.ValueInput.createByReal(feature_converted))
                     
                     chamferFeats.add(chamferInput)
-                    
-                    # Chamfer on vertices is not supported.
-                    if vertexOption:
-                        ui = app.userInterface
-                        ui.messageBox('Chamfer on vertices is not supported. Only edges are processed.')
-
+            
             # Stop the plugin once the script is run once.
             adsk.terminate()
-
         except Exception as e:
             app = adsk.core.Application.get()
             ui  = app.userInterface
@@ -234,7 +208,6 @@ def run(context):
         
         # We set adsk.autoTerminate(False) so the script doesn't end before the command finishes.
         adsk.autoTerminate(False)
-
     except Exception as e:
         if ui:
             ui.messageBox('Failed in run:\n{}'.format(traceback.format_exc()))
