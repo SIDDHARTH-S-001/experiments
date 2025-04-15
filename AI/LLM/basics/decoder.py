@@ -1,3 +1,6 @@
+# This code is picked from the youtube video:
+# https://www.youtube.com/watch?v=MqDehUoMk-E&list=PLTl9hO2Oobd97qfWC40gOSU8C0iu0m2l4&index=8
+
 import torch
 import math
 from torch import nn
@@ -6,13 +9,13 @@ import torch.nn.functional as F
 def scaled_dot_product(q, k, v, mask=None):
     # q: 30 x 8 x 200 x 64, k: 30 x 8 x 200 x 64, v: 30 x 8 x 200 x 64, mask 200 x 200
     d_k = q.size()[-1] 
-    scaled = torch.matmul(q, k.transpose(-1, -2)) / math.sqrt(d_k) # 30 x 8 x 200 x 200
+    scaled = torch.matmul(q, k.transpose(-1, -2)) / math.sqrt(d_k) # 30 x 8 x 200 x 200, scaling is done to reduce variance.
     print(f"scaled.size() : {scaled.size()}")
     if mask is not None:
         print(f"-- ADDING MASK of shape {mask.size()} --") 
         scaled += mask # 30 x 8 x 200 x 200
     attention = F.softmax(scaled, dim=-1) # 30 x 8 x 200 x 200
-    values = torch.matmul(attention, v) # 30 x 8 x 200 x 64
+    values = torch.matmul(attention, v) # 30 x 8 x 200 x 64, for every batch, every head, every word there's a 64 dimensional context vector.
     return values, attention
 
 
@@ -47,7 +50,7 @@ class LayerNormalization(nn.Module):
 
     def forward(self, inputs):
         # inputs : 30 x 200 x 512
-        dims = [-(i + 1) for i in range(len(self.parameters_shape))] # [-1]
+        dims = [-(i + 1) for i in range(len(self.parameters_shape))] # [-1], last layer is picked for normalization.
         print(f"dims: {dims}")
         mean = inputs.mean(dim=dims, keepdim=True) #30 x 200 x 1
         print(f"Mean ({mean.size()})")
@@ -70,7 +73,7 @@ class MultiHeadAttention(nn.Module):
         self.qkv_layer = nn.Linear(d_model , 3 * d_model) # 1536 
         self.linear_layer = nn.Linear(d_model, d_model)
     
-    def forward(self, x, mask=None):
+    def forward(self, x, mask=None): 
         batch_size, sequence_length, d_model = x.size() # 30 x 200 x 512 
         print(f"x.size(): {x.size()}")
         qkv = self.qkv_layer(x) # 30 x 200 x 1536
@@ -79,7 +82,7 @@ class MultiHeadAttention(nn.Module):
         print(f"qkv after reshape .size(): {qkv.size()}")
         qkv = qkv.permute(0, 2, 1, 3) # 30 x 8 x 200 x 192
         print(f"qkv after permutation: {qkv.size()}")
-        q, k, v = qkv.chunk(3, dim=-1) # q: 30 x 8 x 200 x 64, k: 30 x 8 x 200 x 64, v: 30 x 8 x 200 x 64
+        q, k, v = qkv.chunk(3, dim=-1) # q: 30 x 8 x 200 x 64, k: 30 x 8 x 200 x 64, v: 30 x 8 x 200 x 64 - decomposition to q, k, v
         print(f"q: {q.size()}, k:{k.size()}, v:{v.size()}")
         values, attention = scaled_dot_product(q, k, v, mask) # values: 30 x 8 x 200 x 64
         print(f"values: {values.size()}, attention:{attention.size()}")
@@ -97,8 +100,8 @@ class MultiHeadCrossAttention(nn.Module):
         self.d_model = d_model
         self.num_heads = num_heads
         self.head_dim = d_model // num_heads
-        self.kv_layer = nn.Linear(d_model , 2 * d_model) # 1024
-        self.q_layer = nn.Linear(d_model , d_model)
+        self.kv_layer = nn.Linear(d_model , 2 * d_model) # 1024, K and V comes from the encoder.
+        self.q_layer = nn.Linear(d_model , d_model) # Q comes from decoder MHA.
         self.linear_layer = nn.Linear(d_model, d_model)
     
     def forward(self, x, y, mask=None):
@@ -110,9 +113,9 @@ class MultiHeadCrossAttention(nn.Module):
         print(f"q.size(): {q.size()}")
         kv = kv.reshape(batch_size, sequence_length, self.num_heads, 2 * self.head_dim)  # 30 x 200 x 8 x 128
         q = q.reshape(batch_size, sequence_length, self.num_heads, self.head_dim)  # 30 x 200 x 8 x 64
-        kv = kv.permute(0, 2, 1, 3) # 30 x 8 x 200 x 128
-        q = q.permute(0, 2, 1, 3) # 30 x 8 x 200 x 64
-        k, v = kv.chunk(2, dim=-1) # K: 30 x 8 x 200 x 64, v: 30 x 8 x 200 x 64
+        kv = kv.permute(0, 2, 1, 3) # 30 x 8 x 200 x 128 - restructuring 
+        q = q.permute(0, 2, 1, 3) # 30 x 8 x 200 x 64 
+        k, v = kv.chunk(2, dim=-1) # K: 30 x 8 x 200 x 64, v: 30 x 8 x 200 x 64 
         values, attention = scaled_dot_product(q, k, v, mask) #  30 x 8 x 200 x 64
         print(f"values: {values.size()}, attention:{attention.size()}")
         values = values.reshape(batch_size, sequence_length, d_model) #  30 x 200 x 512
@@ -128,7 +131,7 @@ class DecoderLayer(nn.Module):
         self.self_attention = MultiHeadAttention(d_model=d_model, num_heads=num_heads)
         self.norm1 = LayerNormalization(parameters_shape=[d_model])
         self.dropout1 = nn.Dropout(p=drop_prob)
-        self.encoder_decoder_attention = MultiHeadCrossAttention(d_model=d_model, num_heads=num_heads)
+        self.encoder_decoder_attention = MultiHeadCrossAttention(d_model=d_model, num_heads=num_heads) # This is Multi-Head-Cross-Attention (MHCA)
         self.norm2 = LayerNormalization(parameters_shape=[d_model])
         self.dropout2 = nn.Dropout(p=drop_prob)
         self.ffn = PositionwiseFeedForward(d_model=d_model, hidden=ffn_hidden, drop_prob=drop_prob)
@@ -136,7 +139,7 @@ class DecoderLayer(nn.Module):
         self.dropout3 = nn.Dropout(p=drop_prob)
 
     def forward(self, x, y, decoder_mask):
-        _y = y # 30 x 200 x 512
+        _y = y # 30 x 200 x 512, _y --> used for residual connections hence its a copy of y
         print("MASKED SELF ATTENTION")
         y = self.self_attention(y, mask=decoder_mask) # 30 x 200 x 512
         print("DROP OUT 1")
@@ -165,21 +168,24 @@ class SequentialDecoder(nn.Sequential):
     def forward(self, *inputs):
         x, y, mask = inputs
         for module in self._modules.values():
-            y = module(x, y, mask) #30 x 200 x 512
+            y = module(x, y, mask) #30 x 200 x 512, note that new y value is fed into the module every time.
+            # However x from encoder remains the same.
         return y
 
 class Decoder(nn.Module):
     def __init__(self, d_model, ffn_hidden, num_heads, drop_prob, num_layers=1):
         super().__init__()
         self.layers = SequentialDecoder(*[DecoderLayer(d_model, ffn_hidden, num_heads, drop_prob) 
-                                          for _ in range(num_layers)])
+                                          for _ in range(num_layers)]) # Array of decoder layers.
+        # torch.nn.Sequential doesn't allow more than one parameter to be passed in. 
+        # Hence a custom SequentialDecoder class is created, extending from torch.nn.Sequential to feed our needs.
 
-    def forward(self, x, y, mask):
-        #x : 30 x 200 x 512 
-        #y : 30 x 200 x 512
-        #mask : 200 x 200
-        y = self.layers(x, y, mask)
-        return y #30 x 200 x 512
+    def forward(self, x, y, mask): # forward pass function: englis sentence, french sentence, mask
+        # x : 30 x 200 x 512 
+        # y : 30 x 200 x 512
+        # mask : 200 x 200
+        y = self.layers(x, y, mask) # sequence of decoder layers
+        return y # 30 x 200 x 512
     
 d_model = 512
 num_heads = 8
@@ -190,8 +196,8 @@ ffn_hidden = 2048
 num_layers = 5
 
 x = torch.randn( (batch_size, max_sequence_length, d_model) ) # English sentence positional encoded, from Encoder (i.e Context Aware). This is passed as one of the inputs to the decoder.
-y = torch.randn( (batch_size, max_sequence_length, d_model) ) # Kannada sentence positional encoded 
-mask = torch.full([max_sequence_length, max_sequence_length] , float('-inf'))
+y = torch.randn( (batch_size, max_sequence_length, d_model) ) # French sentence positional encoded (ground truth). Another input directly into the decoder.
+mask = torch.full([max_sequence_length, max_sequence_length] , float('-inf')) # look ahead mask
 mask = torch.triu(mask, diagonal=1)
 decoder = Decoder(d_model, ffn_hidden, num_heads, drop_prob, num_layers)
 out = decoder(x, y, mask)
