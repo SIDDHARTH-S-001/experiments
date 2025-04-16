@@ -10,3 +10,5 @@
 3d_reconstruction/photometric_stereo/example_work/__pycache__/*
 Objectron/CNN/Vehicles/Vehicles-OpenImages.v1-416x416.tfrecord/variables/variables.data-00000-of-00001 filter=lfs diff=lfs merge=lfs -text
 Objectron/bounding_box_regression/bbox_regression_model.h5 filter=lfs diff=lfs merge=lfs -text
+*.ta*
+*.en*
