@@ -12,11 +12,16 @@
 // -------------------------------------------------- //
 // YOU CAN USE AND MODIFY THESE CONSTANTS HERE
 constexpr bool INIT_ON_FIRST_PREDICTION = true;
+// true - initializes on 1st prediction
+// false - initializes on 1st update (waits for measurements)
+
 constexpr double INIT_POS_STD = 10; // position uncertainity (m)
 constexpr double INIT_VEL_STD = 10; // velocity uncertainity (m/s)
+
 constexpr double ACCEL_STD = 1.1; // acceleration uncertainity (m/s^2) 
 // low accn std ---> trusts prediction model more
 // higher accen std ---> trusts the measurement more than the prediction (not very smooth)
+
 constexpr double GPS_POS_STD = 3.0;
 // -------------------------------------------------- //
 
