@@ -14,7 +14,7 @@
 constexpr bool INIT_ON_FIRST_PREDICTION = true;
 constexpr double INIT_POS_STD = 0; // position uncertainity (m)
 constexpr double INIT_VEL_STD = 0; // velocity uncertainity (m/s)
-constexpr double ACCEL_STD = 0;
+constexpr double ACCEL_STD = 0; // acceleration uncertainity (m/s^2)
 constexpr double GPS_POS_STD = 3.0;
 // -------------------------------------------------- //
 
@@ -96,18 +96,19 @@ void KalmanFilter::handleGPSMeasurement(GPSMeasurement meas)
         // ENTER YOUR CODE HERE 
 
         VectorXd z = Vector2d();
-        MatrixXd H = MatrixXd(2,4);
+        MatrixXd H = MatrixXd(2,4); // 2 rows, 4 cols
         MatrixXd R = Matrix2d::Zero();
 
         z << meas.x,meas.y;
-        H << 1,0,0,0,0,1,0,0;
-        R(0,0) = GPS_POS_STD*GPS_POS_STD;
+        H << 1,0,0,0,0,1,0,0; // 1st 4 values correspond to row 1, while last 4 correspond to row 2.
+        R(0,0) = GPS_POS_STD*GPS_POS_STD; // refer notes pg 22 for the values.
         R(1,1) = GPS_POS_STD*GPS_POS_STD;
 
-        VectorXd z_hat = H * state;
-        VectorXd y = z - z_hat;
-        MatrixXd S = H * cov * H.transpose() + R;
-        MatrixXd K = cov*H.transpose()*S.inverse();
+        VectorXd z_hat = H * state; // predicted measurement
+        VectorXd y = z - z_hat; // innovation error
+        MatrixXd S = H * cov * H.transpose() + R; // innovation covariance
+        // Note, cov ---> state covariance (priori)
+        MatrixXd K = cov*H.transpose()*S.inverse(); // KALMAN GAIN
 
         state = state + K*y;
         cov = (MatrixXd::Identity(4,4) - K*H) * cov;
