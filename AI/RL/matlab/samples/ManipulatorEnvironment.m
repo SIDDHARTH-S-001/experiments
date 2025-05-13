@@ -9,9 +9,10 @@ classdef ManipulatorEnvironment < handle
         link_lengths;
         num_joints;
         current_joint_angles;
+        current_joint_velocities;
         current_EEF_position;
         
-        joint_velocity_limits = [-pi/2, pi/2];
+        joint_velocity_limits = [-1, 1]; % Bounded to ±1 rad/s as requested
         time_step = 0.1;
     end
     
@@ -20,20 +21,48 @@ classdef ManipulatorEnvironment < handle
             obj.link_lengths = link_lengths;
             obj.num_joints = length(link_lengths);
             obj.current_joint_angles = initial_angles;
+            obj.current_joint_velocities = zeros(size(initial_angles));
             obj.goal_position = double(goal_pos(:).');
             obj.initial_position = obj.forward_kinematics(initial_angles);
             obj.current_EEF_position = obj.initial_position;
         end
         
-        function generate_obstacle(obj, obstacle_type)
+        function state = get_state(obj)
+            % Returns the complete state space including:
+            % - Joint angles
+            % - Joint velocities
+            % - EEF position
+            % - Goal position
+            % - Relative vector to goal
+            eef_pos = obj.current_EEF_position;
+            goal_pos = obj.goal_position;
+            
+            state = [
+                obj.current_joint_angles;    % Joint angles
+                obj.current_joint_velocities; % Joint velocities
+                eef_pos(:);                  % EEF position (x,y)
+                goal_pos(:);                % Goal position (x,y)
+                goal_pos(:) - eef_pos(:)     % Relative vector to goal
+            ];
+        end
+        
+        function generate_obstacle(obj, obstacle_type, size)
+            % Generate an obstacle of a given type and size
+            % Inputs:
+            %   obstacle_type: 'circle', 'square', or 'polygon'
+            %   size: radius (for circle), side length (for square), or scaling factor (for polygon)
+            
+            if nargin < 3
+                size = 0.3;  % Default size if not specified
+            end
+            
             min_x = min([obj.initial_position(1), obj.goal_position(1)]);
             max_x = max([obj.initial_position(1), obj.goal_position(1)]);
             min_y = min([obj.initial_position(2), obj.goal_position(2)]);
             max_y = max([obj.initial_position(2), obj.goal_position(2)]);
             
             center = [min_x + rand()*(max_x-min_x), min_y + rand()*(max_y-min_y)];
-            size = 0.5 + rand()*1.5;
-            
+        
             switch obstacle_type
                 case 'square'
                     half_size = size/2;
@@ -78,25 +107,38 @@ classdef ManipulatorEnvironment < handle
         end
         
         function [new_state, reward, done] = step(obj, joint_velocities)
+            % Clip joint velocities to the specified limits (±1 rad/s)
             joint_velocities = max(min(joint_velocities, obj.joint_velocity_limits(2)), ...
                                   obj.joint_velocity_limits(1));
+            
+            % Update joint velocities
+            obj.current_joint_velocities = joint_velocities;
+            
+            % Calculate new joint angles
             new_angles = obj.current_joint_angles + joint_velocities * obj.time_step;
             
+            % Check for collision
             if obj.check_collision(new_angles)
-                new_state = obj.current_joint_angles;
+                new_state = obj.get_state();
                 reward = -10;
                 done = true;
                 return;
             end
             
+            % Update state
             obj.current_joint_angles = new_angles;
             obj.current_EEF_position = obj.forward_kinematics(new_angles);
-            new_state = new_angles;
             
+            % Calculate reward
             prev_distance = norm(obj.forward_kinematics(obj.current_joint_angles - joint_velocities * obj.time_step) - obj.goal_position);
             distance_to_goal = norm(obj.current_EEF_position - obj.goal_position);
             reward = (prev_distance - distance_to_goal);
+            
+            % Check termination condition
             done = distance_to_goal < obj.goal_tolerance;
+            
+            % Return new state
+            new_state = obj.get_state();
             
             fprintf('Step: Dist=%.2f, Reward=%.2f\n', distance_to_goal, reward);
         end
@@ -135,6 +177,20 @@ classdef ManipulatorEnvironment < handle
                 r = eef_pos - link_positions(i,:);
                 J(:, i) = [-r(2); r(1)];  % 2D Jacobian
             end
+        end
+        
+        function [state, info] = reset(obj, initial_angles)
+            % Reset the environment to initial state
+            if nargin < 2
+                initial_angles = zeros(obj.num_joints, 1);
+            end
+            
+            obj.current_joint_angles = initial_angles;
+            obj.current_joint_velocities = zeros(obj.num_joints, 1);
+            obj.current_EEF_position = obj.forward_kinematics(initial_angles);
+            
+            state = obj.get_state();
+            info = struct();
         end
     end
     

@@ -1,0 +1,97 @@
+%% Test Script for ManipulatorEnvironment
+clear all; close all; clc;
+
+%% Initialize the environment
+link_lengths = [2, 1.5]; % Link lengths [l1, l2]
+initial_angles = [pi/4; -pi/6]; % Initial joint angles [q1; q2]
+goal_position = [2.5, 2.0]; % Goal position [x, y]
+
+env = ManipulatorEnvironment(link_lengths, initial_angles, goal_position);
+
+%% Test 1: Check initial state
+disp('=== Test 1: Initial State ===');
+initial_state = env.get_state();
+fprintf('Initial state vector (size %dx1):\n', length(initial_state));
+disp(initial_state');
+
+% Print state components in a readable format
+fprintf('\nState components:\n');
+fprintf('Joint angles: [%.2f, %.2f] rad\n', initial_state(1:2));
+fprintf('Joint velocities: [%.2f, %.2f] rad/s\n', initial_state(3:4));
+fprintf('EEF position: [%.2f, %.2f] m\n', initial_state(5:6));
+fprintf('Goal position: [%.2f, %.2f] m\n', initial_state(7:8));
+fprintf('Relative vector: [%.2f, %.2f] m\n', initial_state(9:10));
+
+%% Test 2: Take a valid action
+disp('\n=== Test 2: Valid Action ===');
+action = [0.5; -0.3]; % Joint velocities [q1_dot; q2_dot] within ±1 rad/s
+
+[new_state, reward, done] = env.step(action);
+fprintf('Action taken: [%.2f, %.2f] rad/s\n', action(1), action(2));
+fprintf('Reward: %.2f, Done: %d\n', reward, done);
+fprintf('New joint angles: [%.2f, %.2f] rad\n', new_state(1:2));
+fprintf('New joint velocities: [%.2f, %.2f] rad/s\n', new_state(3:4));
+fprintf('New EEF position: [%.2f, %.2f] m\n', new_state(5:6));
+
+%% Test 3: Check state after action
+disp('\n=== Test 3: State After Action ===');
+current_state = env.get_state();
+fprintf('Current distance to goal: %.2f m\n', norm(current_state(9:10)));
+
+%% Test 4: Take an invalid action (should be clipped)
+disp('\n=== Test 4: Invalid Action (Clipping Test) ===');
+invalid_action = [1.5; -2.0]; % Exceeds ±1 rad/s limits
+[new_state, reward, done] = env.step(invalid_action);
+fprintf('Action attempted: [%.2f, %.2f] rad/s\n', invalid_action(1), invalid_action(2));
+fprintf('Actual action taken (after clipping): [%.2f, %.2f] rad/s\n', new_state(3), new_state(4));
+
+%% Test 5: Add obstacle and check collision
+disp('\n=== Test 5: Collision Detection ===');
+env.generate_obstacle('circle'); % Add a circular obstacle
+collision_status = env.check_collision(env.current_joint_angles);
+fprintf('Collision with current joint angles: %d\n', collision_status);
+
+% Test collision with a potentially colliding configuration
+test_angles = [3*pi/4; pi/2]; % A configuration that might collide
+collision_status = env.check_collision(test_angles);
+fprintf('Collision with test angles [%.2f, %.2f]: %d\n', test_angles(1), test_angles(2), collision_status);
+
+%% Test 6: Reset the environment
+disp('\n=== Test 6: Environment Reset ===');
+[reset_state, ~] = env.reset(initial_angles);
+fprintf('Environment reset to initial angles: [%.2f, %.2f] rad\n', reset_state(1), reset_state(2));
+
+%% Test 7: Visualize the manipulator
+disp('\n=== Test 7: Visualization ===');
+figure(1); clf;
+hold on; axis equal; grid on;
+xlim([-0.5, sum(link_lengths)+0.5]);
+ylim([-0.5, sum(link_lengths)+0.5]);
+title('2R Manipulator Visualization');
+
+% Plot goal
+plot(goal_position(1), goal_position(2), 'g*', 'MarkerSize', 10, 'LineWidth', 2);
+
+% Plot obstacles
+for i = 1:length(env.obstacles)
+    obs = env.obstacles{i};
+    fill(obs(:,1), obs(:,2), 'r', 'FaceAlpha', 0.3);
+end
+
+% Get and plot link positions
+[link_pos, eef_pos] = env.get_link_positions(env.current_joint_angles);
+
+% Plot links
+plot(link_pos(:,1), link_pos(:,2), 'b-o', 'LineWidth', 2, 'MarkerSize', 6);
+
+% Plot joints
+plot(link_pos(1,1), link_pos(1,2), 'ko', 'MarkerSize', 8, 'MarkerFaceColor', 'k');
+plot(link_pos(2,1), link_pos(2,2), 'ko', 'MarkerSize', 8, 'MarkerFaceColor', 'k');
+
+% Plot end-effector
+plot(eef_pos(1), eef_pos(2), 'mo', 'MarkerSize', 8, 'MarkerFaceColor', 'm');
+
+xlabel('X position (m)');
+ylabel('Y position (m)');
+legend('Goal', 'Obstacle', 'Manipulator', 'Base', 'Joint', 'End-effector');
+hold off;
