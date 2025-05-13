@@ -28,21 +28,16 @@ classdef ManipulatorEnvironment < handle
         end
         
         function state = get_state(obj)
-            % Returns the complete state space including:
-            % - Joint angles
-            % - Joint velocities
-            % - EEF position
-            % - Goal position
-            % - Relative vector to goal
-            eef_pos = obj.current_EEF_position;
-            goal_pos = obj.goal_position;
+            % Returns the complete state space as a column vector
+            eef_pos = obj.current_EEF_position(:);       % Make column vector
+            goal_pos = obj.goal_position(:);             % Make column vector
             
             state = [
-                obj.current_joint_angles;    % Joint angles
-                obj.current_joint_velocities; % Joint velocities
-                eef_pos(:);                  % EEF position (x,y)
-                goal_pos(:);                % Goal position (x,y)
-                goal_pos(:) - eef_pos(:)     % Relative vector to goal
+                obj.current_joint_angles(:);     % Joint angles (column)
+                obj.current_joint_velocities(:); % Joint velocities (column)
+                eef_pos;                        % EEF position (column)
+                goal_pos;                       % Goal position (column)
+                goal_pos - eef_pos              % Relative vector to goal (column)
             ];
         end
         
