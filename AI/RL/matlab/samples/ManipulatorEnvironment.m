@@ -47,8 +47,9 @@ classdef ManipulatorEnvironment < handle
             %   obstacle_type: 'circle', 'square', or 'polygon'
             %   size: radius (for circle), side length (for square), or scaling factor (for polygon)
             
+            % nargin( fun ) returns the number of input arguments that appear in the fun function definition
             if nargin < 3
-                size = 0.3;  % Default size if not specified
+                size = 0.05;  % Default size if not specified
             end
             
             min_x = min([obj.initial_position(1), obj.goal_position(1)]);
